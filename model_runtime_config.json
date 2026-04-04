@@ -1,0 +1,11 @@
+{
+  "selected_model": "results/best_pretrained_model2.h5",
+  "preprocess_mode": "rescale_255",
+  "threshold": 0.01,
+  "positive_label": "REAL",
+  "negative_label": "FAKE",
+  "input_size": [
+    224,
+    224
+  ]
+}

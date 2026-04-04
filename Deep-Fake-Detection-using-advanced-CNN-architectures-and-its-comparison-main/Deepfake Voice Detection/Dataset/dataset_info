@@ -1,0 +1,44 @@
+The dataset used in this project is sourced from the Kaggle repository:
+Deep Voice: DeepFake Voice Recognition
+🔗 https://www.kaggle.com/datasets/birdy654/deep-voice-deepfake-voice-recognition
+
+It consists of high-quality .wav audio files categorized into two primary classes:
+
+REAL: Original human speech recordings.
+
+FAKE: DeepFake or AI-generated voice samples that closely mimic real individuals.
+
+The dataset directory structure is as follows:
+
+/KAGGLE/AUDIO/REAL/
+Contains genuine voice recordings (e.g., linus-original.wav).
+
+/KAGGLE/AUDIO/FAKE/
+Contains AI-generated or manipulated speech recordings (e.g., linus-to-margot.wav).
+
+Each audio file is stored in WAV format and is sampled at a consistent rate suitable for feature extraction using librosa. This ensures that features such as:
+
+MFCCs (Mel-Frequency Cepstral Coefficients),
+
+Mel Spectrograms,
+
+Chromagrams, and
+
+Spectrograms
+
+can be reliably extracted for downstream machine learning and deep learning tasks.
+
+This dataset is ideal for:
+
+Binary classification problems in speech/audio processing,
+
+Voice anti-spoofing systems,
+
+Synthetic speech detection research,
+
+Training models for DeepFake voice identification.
+
+To address the class imbalance issue (typically more REAL than FAKE samples), RandomOverSampler from the imbalanced-learn (imblearn) Python package was applied to ensure balanced training.
+
+For more information or to download the dataset, visit:
+🔗 https://www.kaggle.com/datasets/birdy654/deep-voice-deepfake-voice-recognition
