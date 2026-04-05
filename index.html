@@ -26,7 +26,7 @@
         const TABS = [
             { id: "audio",      label: "Audio",      accept: ".mp3,.wav,.ogg,.m4a,.flac" },
             { id: "video",      label: "Image",      accept: ".jpg,.jpeg,.png,.webp,.bmp" },
-            { id: "multimodal", label: "Multimodal", accept: ".mp4,.mov,.mp3,.wav,.zip"  },
+            { id: "multimodal", label: "Multimodal", accept: ".jpg,.jpeg,.png,.webp,.bmp,.mp3,.wav,.ogg,.m4a" },
         ];
 
         const FEATURES = [
@@ -45,22 +45,24 @@
         }
 
         function apiToPanelResult(payload, fileName, elapsedSec) {
-            const label = String(payload?.label || "UNKNOWN");
-            const confidence = Number(payload?.confidence || 0);
-            const raw = Number(payload?.raw_score || 0);
+            const label = String(payload?.label ?? payload?.verdict ?? "UNKNOWN");
+            const score = Number(payload?.confidence ?? (payload?.risk_score != null ? payload.risk_score * 100 : 0));
+            const raw = Number(payload?.raw_score ?? payload?.risk_score ?? 0);
             const processingSec = Number(payload?.processing_time_sec);
             const doneIn = Number.isFinite(processingSec)
                 ? processingSec.toFixed(2) + "s"
                 : elapsedSec.toFixed(2) + "s";
+            const positive = label === "REAL" || label === "GENUINE";
             return {
                 title: "Deepfake Detection Complete",
                 time: doneIn,
                 items: [
                     { label: "File", value: fileName, green: false },
-                    { label: "Prediction", value: label, green: label === "REAL" },
-                    { label: "Confidence", value: `${confidence.toFixed(2)}%`, green: label === "REAL" },
+                    { label: "Prediction", value: label, green: positive },
+                    { label: "Confidence", value: `${score.toFixed(2)}%`, green: positive },
                     { label: "Raw Score", value: raw.toFixed(4), green: false },
-                    { label: "Message", value: payload?.message || "", green: false },
+                    { label: "Risk Tier", value: payload?.risk_tier || "-", green: false },
+                    { label: "Explanation", value: payload?.explanation || payload?.message || "", green: false },
                 ],
             };
         }
@@ -149,12 +151,12 @@
         }
 
         // ─── Dropzone ────────────────────────────────────────────────────────────────
-        function Dropzone({ tabId, onFile }) {
+        function Dropzone({ tabId, onFile, accept, title, subtitle }) {
             const inputRef = useRef();
             const colorMap = { audio: "blue", video: "purple", multimodal: "cyan" };
-            const cls = colorMap[tabId];
-            const Icon = ICONS[tabId];
-            const labels = {
+            const cls = colorMap[tabId] || "cyan";
+            const Icon = ICONS[tabId] || ICONS.multimodal;
+            const defaultLabels = {
                 audio:      ["Drop audio file here",    "or click to browse · MP3, WAV, OGG, M4A, FLAC"],
                 video:      ["Drop image file here",    "or click to browse · JPG, JPEG, PNG, WebP, BMP"],
                 multimodal: ["Drop any media file",     "Image with audio, ZIP bundle, or any supported format"],
@@ -165,6 +167,8 @@
                 const f = e.dataTransfer.files[0];
                 if (f) onFile(f);
             }
+
+            const [mainLabel, secondaryLabel] = title ? [title, subtitle] : defaultLabels[tabId];
 
             return (
                 <div
@@ -178,14 +182,14 @@
                         ref={inputRef}
                         type="file"
                         style={{ display: "none" }}
-                        accept={TABS.find(t => t.id === tabId).accept}
+                        accept={accept || TABS.find(t => t.id === tabId)?.accept}
                         onChange={e => { if (e.target.files[0]) onFile(e.target.files[0]); }}
                     />
                     <div className={`dropzone-icon dropzone-icon-${cls}`}>
                         <Icon size={28} />
                     </div>
-                    <p className="dropzone-title">{labels[tabId][0]}</p>
-                    <p className="dropzone-sub">{labels[tabId][1]}</p>
+                    <p className="dropzone-title">{mainLabel}</p>
+                    <p className="dropzone-sub">{secondaryLabel}</p>
                 </div>
             );
         }
@@ -297,30 +301,90 @@
 
         // ─── Analyser Panel ──────────────────────────────────────────────────────────
         function AnalyserPanel({ tabId }) {
-            const [file,   setFile]   = useState(null);
+            const [file, setFile] = useState(null);
+            const [imageFile, setImageFile] = useState(null);
+            const [audioFile, setAudioFile] = useState(null);
             const [status, setStatus] = useState("idle");   // idle | loading | done | error
             const [result, setResult] = useState(null);
-            const [error,  setError]  = useState("");
+            const [error, setError] = useState("");
 
-            function handleFile(f) { setFile(f); setStatus("idle"); setResult(null); setError(""); }
+            function handleFile(f) {
+                setStatus("idle");
+                setResult(null);
+                setError("");
+                if (tabId === "multimodal") {
+                    if (f.type.startsWith("audio/")) {
+                        setAudioFile(f);
+                    } else if (f.type.startsWith("image/")) {
+                        setImageFile(f);
+                    } else {
+                        setError("Upload a supported image or audio file for multimodal analysis.");
+                    }
+                    return;
+                }
+                setFile(f);
+            }
 
             async function analyse() {
-                if (!file) return;
-                setStatus("loading");
-                setError("");
+                const isAudio = tabId === "audio";
+                const isVideo = tabId === "video";
+                const isMulti = tabId === "multimodal";
+                const chosenFile = isMulti ? null : file;
 
-                if (!file.type.startsWith("image/")) {
+                if (isMulti && !imageFile && !audioFile) {
                     setStatus("error");
-                    setError("This model currently supports image files only.");
+                    setError("Upload an image or audio file to run multimodal analysis.");
+                    return;
+                }
+                if (!isMulti && !chosenFile) {
                     return;
                 }
 
-                try {
-                    const startTime = performance.now();
-                    const formData = new FormData();
-                    formData.append("image", file);
+                if (!isMulti) {
+                    if (isAudio && !chosenFile.type.startsWith("audio/")) {
+                        setStatus("error");
+                        setError("This model currently supports audio files only.");
+                        return;
+                    }
+                    if (isVideo && !chosenFile.type.startsWith("image/")) {
+                        setStatus("error");
+                        setError("This model currently supports image files only.");
+                        return;
+                    }
+                }
 
-                    const res = await fetch("http://127.0.0.1:8080/predict", {
+                try {
+                    if (!window.location.protocol.startsWith("http")) {
+                        setStatus("error");
+                        setError("Please open the app through its HTTP URL, e.g. http://127.0.0.1:8080/.");
+                        return;
+                    }
+
+                    setStatus("loading");
+                    setError("");
+                    const startTime = performance.now();
+                    const origin = window.location.origin;
+                    const formData = new FormData();
+
+                    let fileName = "multimodal-data";
+                    let endpoint = "/predict-multimodal";
+
+                    if (isMulti) {
+                        if (imageFile) {
+                            formData.append("image", imageFile);
+                            fileName = imageFile.name;
+                        }
+                        if (audioFile) {
+                            formData.append("audio", audioFile);
+                            fileName = imageFile ? `${imageFile.name} + ${audioFile.name}` : audioFile.name;
+                        }
+                    } else {
+                        formData.append(isAudio ? "audio" : "image", chosenFile);
+                        endpoint = isAudio ? "/predict-audio" : "/predict";
+                        fileName = chosenFile.name;
+                    }
+
+                    const res = await fetch(`${origin}${endpoint}`, {
                         method: "POST",
                         body: formData,
                     });
@@ -332,7 +396,7 @@
 
                     setStatus("done");
                     const elapsedSec = (performance.now() - startTime) / 1000;
-                    setResult(apiToPanelResult(payload, file.name, elapsedSec));
+                    setResult(apiToPanelResult(payload, fileName, elapsedSec));
                 } catch (e) {
                     setStatus("error");
                     const msg = e?.message || "Unexpected error while running model inference.";
@@ -344,7 +408,14 @@
                 }
             }
 
-            function reset() { setFile(null); setStatus("idle"); setResult(null); setError(""); }
+            function reset() {
+                setFile(null);
+                setImageFile(null);
+                setAudioFile(null);
+                setStatus("idle");
+                setResult(null);
+                setError("");
+            }
 
             const btnCls = {
                 audio:      "analyse-btn",
@@ -353,23 +424,58 @@
             }[tabId];
 
             const btnLabel = { audio: "Analyse Audio", video: "Analyse Image", multimodal: "Run Multimodal Analysis" }[tabId];
+            const hasMultiFiles = !!imageFile || !!audioFile;
 
             return (
                 <div className="panel-card">
                     <PanelLeft tabId={tabId} />
                     <div className="panel-right">
-                        {/* Idle — no file */}
-                        {status === "idle" && !file && (
-                            <Dropzone tabId={tabId} onFile={handleFile} />
-                        )}
-
-                        {/* Idle — file chosen */}
-                        {status === "idle" && file && (
+                        {tabId === "multimodal" ? (
                             <>
-                                <FileChip tabId={tabId} file={file} onRemove={reset} />
-                                <button className={btnCls} onClick={analyse}>
+                                <div className="multimodal-grid">
+                                    <Dropzone
+                                        tabId="video"
+                                        accept=".jpg,.jpeg,.png,.webp,.bmp"
+                                        onFile={handleFile}
+                                        title="Drop image here"
+                                        subtitle="Supports JPG, PNG, BMP, WebP"
+                                    />
+                                    <Dropzone
+                                        tabId="audio"
+                                        accept=".mp3,.wav,.ogg,.m4a,.flac"
+                                        onFile={handleFile}
+                                        title="Drop audio here"
+                                        subtitle="Supports WAV, MP3, OGG, M4A"
+                                    />
+                                </div>
+
+                                {status === "idle" && hasMultiFiles && (
+                                    <div className="multimodal-preview">
+                                        {imageFile && <FileChip tabId="multimodal" file={imageFile} onRemove={() => { setImageFile(null); setStatus("idle"); }} />}
+                                        {audioFile && <FileChip tabId="multimodal" file={audioFile} onRemove={() => { setAudioFile(null); setStatus("idle"); }} />}
+                                    </div>
+                                )}
+
+                                <button className={btnCls} onClick={analyse} disabled={!hasMultiFiles}>
                                     {btnLabel} <ArrowRight size={16} />
                                 </button>
+                            </>
+                        ) : (
+                            <>
+                                {/* Idle — no file */}
+                                {status === "idle" && !file && (
+                                    <Dropzone tabId={tabId} onFile={handleFile} />
+                                )}
+
+                                {/* Idle — file chosen */}
+                                {status === "idle" && file && (
+                                    <>
+                                        <FileChip tabId={tabId} file={file} onRemove={reset} />
+                                        <button className={btnCls} onClick={analyse}>
+                                            {btnLabel} <ArrowRight size={16} />
+                                        </button>
+                                    </>
+                                )}
                             </>
                         )}
 

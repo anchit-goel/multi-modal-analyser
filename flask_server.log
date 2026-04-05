@@ -1,0 +1,87 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1775418439.801740   15632 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1775418542.258831   15632 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Config path: D:\multimodalanalysis\multi-modal-analyser\model_runtime_config.json
+Selected model: D:\multimodalanalysis\best_pretrained_model2.h5
+Demo model (untrained placeholder): False
+Preprocess mode: rescale_255
+Threshold: 0.01
+Positive label: REAL
+Negative label: FAKE
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://10.67.12.232:8080
+Press CTRL+C to quit
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1775418573.100301    3176 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1775418575.949320    3176 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Config path: D:\multimodalanalysis\multi-modal-analyser\model_runtime_config.json
+Selected model: D:\multimodalanalysis\best_pretrained_model2.h5
+Demo model (untrained placeholder): False
+Preprocess mode: rescale_255
+Threshold: 0.01
+Positive label: REAL
+Negative label: FAKE
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://10.67.12.232:8080
+Press CTRL+C to quit
+I0000 00:00:1775418584.447220   13604 cpu_feature_guard.cc:227] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+Loading calibrator model...
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1775418617.822155   16252 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1775418620.636998   16252 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Config path: D:\multimodalanalysis\multi-modal-analyser\model_runtime_config.json
+Selected model: D:\multimodalanalysis\best_pretrained_model2.h5
+Demo model (untrained placeholder): False
+Preprocess mode: rescale_255
+Threshold: 0.01
+Positive label: REAL
+Negative label: FAKE
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://10.67.12.232:8080
+Press CTRL+C to quit
+I0000 00:00:1775418628.310887   21164 cpu_feature_guard.cc:227] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+Loading calibrator model...
+d:\multimodalanalysis\.venv\Lib\site-packages\huggingface_hub\file_download.py:138: UserWarning: `huggingface_hub` cache-system uses symlinks by default to efficiently store duplicated files but your machine does not support them in C:\Users\malha\.cache\huggingface\hub\models--Gustking--wav2vec2-large-xlsr-deepfake-audio-classification. Caching files will still work but in a degraded version that might require more space on your disk. This warning can be disabled by setting the `HF_HUB_DISABLE_SYMLINKS_WARNING` environment variable. For more details, see https://huggingface.co/docs/huggingface_hub/how-to-cache#limitations.
+To support symlinks on Windows, you either need to activate Developer Mode or to run Python as an administrator. In order to activate developer mode, see this article: https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+  warnings.warn(message)
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+127.0.0.1 - - [06/Apr/2026 01:21:30] "GET /predict HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:23:37] "GET / HTTP/1.1" 304 -
+127.0.0.1 - - [06/Apr/2026 01:23:38] "GET /style.css HTTP/1.1" 304 -
+WARNING:tensorflow:TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+127.0.0.1 - - [06/Apr/2026 01:27:38] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:27:49] "POST /predict HTTP/1.1" 200 -
+Loading weights:   0%|          | 0/426 [00:00<?, ?it/s]Loading weights:  93%|#########2| 395/426 [00:00<00:00, 3673.19it/s]Loading weights: 100%|##########| 426/426 [00:00<00:00, 3939.04it/s]
+Calibrator loaded successfully!
+All models loaded — CNN + LCNN (primary) + Calibrator (secondary)
+127.0.0.1 - - [06/Apr/2026 01:31:35] "GET /model-status HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:31:35] "GET /model-status HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:32:31] "GET / HTTP/1.1" 304 -
+127.0.0.1 - - [06/Apr/2026 01:32:31] "GET /style.css HTTP/1.1" 304 -
+Calibrator failed: <class 'transformers.utils.generic.ModelOutput'> is already registered as pytree node.
+d:\multimodalanalysis\.venv\Lib\site-packages\torch\utils\_pytree.py:244: UserWarning: <class 'transformers.utils.generic.ModelOutput'> is already registered as pytree node. Overwriting the previous registration.
+  _private_register_pytree_node(
+Calibrator failed: PyTree type <class 'transformers.utils.generic.ModelOutput'> is already registered in namespace 'torch'.
+127.0.0.1 - - [06/Apr/2026 01:33:12] "POST /predict-audio HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:33:13] "POST /predict-audio HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:33:14] "POST /predict-audio HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:34:06] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:34:16] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 01:34:34] "POST /predict-audio HTTP/1.1" 200 -

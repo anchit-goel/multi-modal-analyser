@@ -392,6 +392,31 @@ input[type="file"].sr-only { position: absolute; width: 1px; height: 1px; paddin
     background: rgba(45,212,191,.08);
 }
 
+.multimodal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+@media (max-width: 900px) {
+    .multimodal-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.multimodal-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+@media (min-width: 900px) {
+    .multimodal-preview {
+        flex-direction: row;
+    }
+}
+
 .dropzone-icon {
     width: 56px; height: 56px;
     background: rgba(20,184,166,.15);
@@ -472,6 +497,12 @@ input[type="file"].sr-only { position: absolute; width: 1px; height: 1px; paddin
     margin-top: 1rem;
 }
 .analyse-btn-multi:hover { transform: translateY(-1px); }
+
+.analyse-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+}
 
 /* Loading Panel */
 .loading-panel {

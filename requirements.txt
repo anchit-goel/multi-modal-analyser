@@ -3,3 +3,11 @@ flask-cors
 tensorflow
 numpy
 pillow
+torch
+torchaudio
+librosa
+transformers
+huggingface_hub
+soundfile
+easyocr
+rapidfuzz

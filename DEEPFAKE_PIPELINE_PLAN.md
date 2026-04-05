@@ -1,4 +1,4 @@
-# Deepfake Pipeline Plan (Using best_pretrained_model2.h5)
+# Deepfake Pipeline Plan (Using new_model.h5)
 
 ## Current Serving Pipeline
 
@@ -9,7 +9,7 @@
 - Convert RGB
 - Convert to float32
 - Normalize with `arr / 255.0`
-4. Inference using `results/best_pretrained_model2.h5` only.
+4. Inference using `results/new_model.h5` only.
 5. Sigmoid score -> label using threshold 0.5.
 6. Return JSON with `label`, `confidence`, `raw_score`, and `processing_time_sec`.
 
@@ -68,4 +68,4 @@ This is why serving currently uses `/255.0` normalization and thresholded sigmoi
 2. Export score CSV (`image, true_label, score, pred_label`).
 3. Fit optimal threshold from validation ROC/PR.
 4. Update backend threshold and class mapping JSON.
-5. Re-test and freeze version as `best_pretrained_model2_calibrated`.
+5. Re-test and freeze version as `new_model_calibrated`.
