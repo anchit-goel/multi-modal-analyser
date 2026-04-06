@@ -1,5 +1,5 @@
 {
-  "selected_model": "models/best_pretrained_model2.h5",
+  "selected_model": "models/visual_model.h5",
   "allow_demo_model": true,
   "preprocess_mode": "rescale_255",
   "threshold": 0.01,
