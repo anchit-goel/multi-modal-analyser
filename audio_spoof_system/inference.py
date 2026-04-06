@@ -63,6 +63,16 @@ def get_risk_tier(score):
         return "CRITICAL"
 
 
+def soften_extremes(score: float) -> float:
+    """Keep the score calibrated without letting it collapse to 0.0 or 1.0."""
+    score = float(score)
+    if score > 0.95:
+        return 0.95 + ((score - 0.95) * 0.25)
+    if score < 0.05:
+        return 0.05 - ((0.05 - score) * 0.25)
+    return score
+
+
 def calibrate_score(cnn_prob, lcnn_prob, calibrator_prob):
     """
     Your CNN+LCNN are primary.
@@ -72,19 +82,26 @@ def calibrate_score(cnn_prob, lcnn_prob, calibrator_prob):
     # Base score from your models (primary — built from scratch)
     base_score = (cnn_prob * 0.55) + (lcnn_prob * 0.45)
 
-    # Calibration logic
-    both_overconfident = cnn_prob > 0.85 and lcnn_prob > 0.85
-    calibrator_says_real = calibrator_prob < 0.25
+    if calibrator_prob is None:
+        return soften_extremes(base_score), "primary_only"
 
-    if both_overconfident and calibrator_says_real:
-        # Your models are overconfident, calibrator disagrees strongly
-        # Apply correction but your models still lead
+    disagreement = abs(base_score - calibrator_prob)
+
+    # Calibration logic
+    if disagreement >= 0.70:
+        # Strong disagreement: let the calibrator pull the score more aggressively.
         corrected = (base_score * 0.55) + (calibrator_prob * 0.45)
-        return corrected, "calibrated"
+        mode = "calibrated_strong"
+    elif disagreement >= 0.35:
+        # Moderate disagreement: keep the primary model dominant, but still adjust.
+        corrected = (base_score * 0.65) + (calibrator_prob * 0.35)
+        mode = "calibrated_moderate"
     else:
         # Normal case — your models decide, calibrator has small influence
-        final = (base_score * 0.75) + (calibrator_prob * 0.25)
-        return final, "standard"
+        corrected = (base_score * 0.75) + (calibrator_prob * 0.25)
+        mode = "standard"
+
+    return soften_extremes(corrected), mode
 
 
 def predict(audio_path):
@@ -118,12 +135,14 @@ def predict(audio_path):
             models_used = f"CNN + LCNN (primary) | Calibrator ({mode})"
         except Exception as e:
             print(f"Calibrator failed: {e}")
-            final_score = base_score
+            final_score = soften_extremes(base_score)
             calibrator_prob = None
+            mode = "primary_only_fallback"
             models_used = "CNN + LCNN"
     else:
-        final_score = base_score
+        final_score = soften_extremes(base_score)
         calibrator_prob = None
+        mode = "primary_only"
         models_used = "CNN + LCNN"
 
     risk_tier = get_risk_tier(final_score)
@@ -146,6 +165,8 @@ def predict(audio_path):
         "cnn_score":        round(cnn_prob,         4),
         "lcnn_score":       round(lcnn_prob,         4),
         "calibrator_score": round(calibrator_prob,   4) if calibrator_prob is not None else None,
+        "primary_score":    round(base_score,        4),
+        "calibration_mode":  mode,
         "risk_score":       round(final_score,       4),
         "verdict":          verdict,
         "risk_tier":        risk_tier,

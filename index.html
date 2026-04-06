@@ -44,23 +44,30 @@
             return (bytes / (1024 * 1024)).toFixed(1) + " MB";
         }
 
-        function apiToPanelResult(payload, fileName, elapsedSec) {
-            const label = String(payload?.label ?? payload?.verdict ?? "UNKNOWN");
-            const score = Number(payload?.confidence ?? (payload?.risk_score != null ? payload.risk_score * 100 : 0));
-            const raw = Number(payload?.raw_score ?? payload?.risk_score ?? 0);
+        function apiToPanelResult(payload, fileName, elapsedSec, tabId) {
+            const isMultimodal = tabId === "multimodal";
+            const label = isMultimodal
+                ? String(payload?.overall_verdict ?? payload?.verdict ?? "UNKNOWN")
+                : String(payload?.label ?? payload?.verdict ?? "UNKNOWN");
+            const score = isMultimodal
+                ? Number(payload?.overall_risk_score != null ? payload.overall_risk_score * 100 : 0)
+                : Number(payload?.confidence ?? (payload?.risk_score != null ? payload.risk_score * 100 : 0));
+            const raw = isMultimodal
+                ? Number(payload?.overall_risk_score ?? payload?.risk_score ?? 0)
+                : Number(payload?.raw_score ?? payload?.risk_score ?? 0);
             const processingSec = Number(payload?.processing_time_sec);
             const doneIn = Number.isFinite(processingSec)
                 ? processingSec.toFixed(2) + "s"
                 : elapsedSec.toFixed(2) + "s";
-            const positive = label === "REAL" || label === "GENUINE";
+            const positive = label === "REAL" || label === "GENUINE" || label === "SAFE";
             return {
                 title: "Deepfake Detection Complete",
                 time: doneIn,
                 items: [
                     { label: "File", value: fileName, green: false },
-                    { label: "Prediction", value: label, green: positive },
-                    { label: "Confidence", value: `${score.toFixed(2)}%`, green: positive },
-                    { label: "Raw Score", value: raw.toFixed(4), green: false },
+                    { label: isMultimodal ? "Overall Verdict" : "Prediction", value: label, green: positive },
+                    { label: isMultimodal ? "Risk Score" : "Confidence", value: `${score.toFixed(2)}%`, green: positive },
+                    { label: isMultimodal ? "Overall Risk" : "Raw Score", value: raw.toFixed(4), green: false },
                     { label: "Risk Tier", value: payload?.risk_tier || "-", green: false },
                     { label: "Explanation", value: payload?.explanation || payload?.message || "", green: false },
                 ],
@@ -396,7 +403,7 @@
 
                     setStatus("done");
                     const elapsedSec = (performance.now() - startTime) / 1000;
-                    setResult(apiToPanelResult(payload, fileName, elapsedSec));
+                    setResult(apiToPanelResult(payload, fileName, elapsedSec, tabId));
                 } catch (e) {
                     setStatus("error");
                     const msg = e?.message || "Unexpected error while running model inference.";
