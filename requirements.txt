@@ -1,8 +1,8 @@
 flask
 flask-cors
 gunicorn
-tensorflow
-numpy
+tensorflow==2.16.2
+numpy<2.0
 pillow
 torch
 torchaudio
