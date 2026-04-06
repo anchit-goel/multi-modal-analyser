@@ -186,11 +186,11 @@ def ensure_model_loaded() -> None:
 	except Exception as exc:  # noqa: BLE001
 		MODEL_LOAD_ERROR = str(exc)
 
-AUDIO_ROOT = WORKSPACE_DIR.parent / "audio_spoof_system"
+AUDIO_ROOT = WORKSPACE_DIR / "audio_spoof_system"
 AUDIO_LOAD_ERROR: str | None = None
 audio_predict = None
 
-MULTIMODAL_ROOT = WORKSPACE_DIR.parent / "multimodal_injection"
+MULTIMODAL_ROOT = WORKSPACE_DIR / "multimodal_injection"
 MULTIMODAL_LOAD_ERROR: str | None = None
 multimodal_analyze = None
 MULTIMODAL_LOADING = False

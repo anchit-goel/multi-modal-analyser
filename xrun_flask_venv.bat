@@ -1,3 +1,3 @@
 @echo off
 cd /d %~dp0
-start "" /B "d:\multimodalanalysis\.venv\Scripts\python.exe" app.py
+start "" /B "%~dp0.venv\Scripts\python.exe" app.py

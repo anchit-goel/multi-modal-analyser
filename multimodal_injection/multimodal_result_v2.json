@@ -1,0 +1,50 @@
+{
+  "hidden_text_analysis": {
+    "suspicious_block_ratio": 0.0133,
+    "text_presence_ratio": 0.0,
+    "hidden_content_risk": 0.04,
+    "has_embedded_text": false,
+    "verdict": "CLEAN"
+  },
+  "injection_scan": {
+    "caption_scan": {
+      "injection_keywords_found": [],
+      "injection_risk": 0.0,
+      "verdict": "CLEAN"
+    },
+    "ocr_scan": {
+      "injection_keywords_found": [],
+      "injection_risk": 0.0,
+      "verdict": "CLEAN"
+    },
+    "combined_keywords": [],
+    "injection_risk": 0.0,
+    "verdict": "CLEAN",
+    "source": "caption"
+  },
+  "audio_visual_mismatch": {
+    "audio_transcript": "............................................................................................................................................................................................................................................................................................................................................................................................................................................................",
+    "image_caption": "a blue background with a white border",
+    "similarity_score": 0.0,
+    "mismatch_risk": 0.95,
+    "risk_level": "CRITICAL",
+    "note": "Severe mismatch \u2014 injection attack likely"
+  },
+  "clip_alignment": {
+    "score": null,
+    "status": "SKIPPED \u2014 transcript too short/noisy for reliable CLIP scoring",
+    "note": "CLIP skipped \u2014 unreliable for this input"
+  },
+  "overall_risk_score": 0.7767,
+  "overall_verdict": "HIGH RISK \u2014 likely manipulation",
+  "risk_tier": "HIGH",
+  "flags": [
+    "Audio-visual MISMATCH: similarity only 0.0% \u2014 Severe mismatch \u2014 injection attack likely",
+    "Audio transcript was empty/noise \u2014 CLIP skipped, risk penalized"
+  ],
+  "explanation": "Analyzed audio + image. Overall risk: 77.7% (HIGH). Flags: 2. Audio-visual MISMATCH: similarity only 0.0% \u2014 Severe mismatch \u2014 injection attack likely; Audio transcript was empty/noise \u2014 CLIP skipped, risk penalized",
+  "image_caption": "a blue background with a white border",
+  "ocr_extracted_text": "",
+  "audio_transcript": "............................................................................................................................................................................................................................................................................................................................................................................................................................................................",
+  "semantic_similarity": 0.0
+}
