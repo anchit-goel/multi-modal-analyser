@@ -149,7 +149,7 @@ INPUT_SIZE = tuple(RUNTIME_CONFIG.get("input_size", [224, 224]))
 
 MODEL_PATH = resolve_model_path(RUNTIME_CONFIG)
 MODEL_LOAD_ERROR: str | None = None
-DEMO_MODEL_PATH = WORKSPACE_DIR / "results" / "_demo_classifier.keras"
+DEMO_MODEL_PATH = WORKSPACE_DIR / "models" / "results" / "_demo_classifier.keras"
 IS_DEMO_MODEL = False
 
 if MODEL_PATH is None:
@@ -186,11 +186,11 @@ def ensure_model_loaded() -> None:
 	except Exception as exc:  # noqa: BLE001
 		MODEL_LOAD_ERROR = str(exc)
 
-AUDIO_ROOT = WORKSPACE_DIR / "audio_spoof_system"
+AUDIO_ROOT = WORKSPACE_DIR / "modules" / "audio_spoof_system"
 AUDIO_LOAD_ERROR: str | None = None
 audio_predict = None
 
-MULTIMODAL_ROOT = WORKSPACE_DIR / "multimodal_injection"
+MULTIMODAL_ROOT = WORKSPACE_DIR / "modules" / "multimodal_injection"
 MULTIMODAL_LOAD_ERROR: str | None = None
 multimodal_analyze = None
 MULTIMODAL_LOADING = False
