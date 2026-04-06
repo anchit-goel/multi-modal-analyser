@@ -12,3 +12,4 @@ huggingface_hub
 soundfile
 easyocr
 rapidfuzz
+gunicorn==22.0.0
