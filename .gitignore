@@ -11,7 +11,7 @@ pip-log.txt
 
 # Large binary/data files
 *.zip
-*.h5
+# *.h5
 *.csv
 1m_faces_16_17_18_19/
 real-face/
