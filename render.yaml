@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: guardianai
+    env: python
+    plan: standard
+    autoDeploy: true
+    rootDir: .
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 900
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.13
+      - key: HOST
+        value: 0.0.0.0
+      - key: MODEL_CONFIG_PATH
+        value: /opt/render/project/src/model_runtime_config.json
+      - key: TRANSFORMERS_CACHE
+        value: /opt/render/project/.cache/huggingface
+      - key: HF_HOME
+        value: /opt/render/project/.cache/huggingface

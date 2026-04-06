@@ -481,4 +481,6 @@ if __name__ == "__main__":
 	print(f"Positive label: {POSITIVE_LABEL}")
 	print(f"Negative label: {NEGATIVE_LABEL}")
 	start_multimodal_background_load()
-	app.run(debug=False, use_reloader=False, host="127.0.0.1", port=8080)
+	host = os.getenv("HOST", "0.0.0.0")
+	port = int(os.getenv("PORT", "8080"))
+	app.run(debug=False, use_reloader=False, host=host, port=port)
