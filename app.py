@@ -21,6 +21,12 @@ app = Flask(__name__)
 CORS(app)
 
 
+RUNNING_ON_RENDER = bool(os.getenv("RENDER")) or bool(os.getenv("RENDER_SERVICE_ID")) or bool(os.getenv("RENDER_INSTANCE_ID"))
+FORCE_DEMO_MODEL = os.getenv("FORCE_DEMO_MODEL", "").lower() in {"1", "true", "yes"}
+USE_REAL_MODEL = os.getenv("USE_REAL_MODEL", "").lower() in {"1", "true", "yes"}
+ENABLE_EXTRA_MODELS = os.getenv("ENABLE_EXTRA_MODELS", "").lower() in {"1", "true", "yes"}
+
+
 class CompatibleDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
 	@classmethod
 	def from_config(cls, config):
@@ -60,6 +66,10 @@ def load_runtime_config() -> dict:
 	if CONFIG_PATH.exists():
 		user_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 		cfg.update(user_cfg)
+	if FORCE_DEMO_MODEL or (RUNNING_ON_RENDER and not USE_REAL_MODEL):
+		cfg["selected_model"] = None
+		cfg["allow_demo_model"] = True
+		cfg["preprocess_mode"] = "rescale_255"
 	return cfg
 
 
@@ -281,8 +291,9 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
 @app.route("/model-status", methods=["GET"])
 def model_status():
 	ensure_model_loaded()
-	ensure_audio_loaded()
-	start_multimodal_background_load()
+	if ENABLE_EXTRA_MODELS and not RUNNING_ON_RENDER:
+		ensure_audio_loaded()
+		start_multimodal_background_load()
 	return jsonify(
 		{
 			"config_path": str(CONFIG_PATH),
@@ -377,6 +388,9 @@ def predict_audio():
 			}
 		)
 
+	if RUNNING_ON_RENDER and not ENABLE_EXTRA_MODELS:
+		return jsonify({"error": "Audio inference is disabled on the free Render deployment. Use the local app or enable extra models on a larger instance."}), 503
+
 	ensure_audio_loaded()
 	if audio_predict is None:
 		return jsonify({"error": f"Audio model failed to load: {AUDIO_LOAD_ERROR}"}), 500
@@ -415,6 +429,9 @@ def predict_multimodal():
 				"model_status": "http://127.0.0.1:8080/model-status",
 			}
 		)
+
+	if RUNNING_ON_RENDER and not ENABLE_EXTRA_MODELS:
+		return jsonify({"error": "Multimodal inference is disabled on the free Render deployment. Use the local app or enable extra models on a larger instance."}), 503
 
 	if multimodal_analyze is None and MULTIMODAL_LOAD_ERROR is None:
 		return jsonify({"error": "Multimodal model is still loading. Please try again in a minute."}), 503
