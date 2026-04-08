@@ -1,21 +1,29 @@
-import torch
-import numpy as np
-import librosa
-from PIL import Image
-from transformers import (
-    BlipProcessor, BlipForConditionalGeneration,
-    CLIPProcessor, CLIPModel,
-    pipeline
-)
-from collections import Counter
-import math
 import os
+import re
 import traceback
+from collections import Counter
+import logging
+
 import easyocr
+import librosa
+import numpy as np
+import torch
+from PIL import Image
 from rapidfuzz import fuzz
+from transformers import (
+    BlipForConditionalGeneration,
+    BlipProcessor,
+    CLIPModel,
+    CLIPProcessor,
+    pipeline,
+)
 
 MODELS_LOADED = False
 MODEL_LOAD_ERROR = None
+
+DETECTOR_VERSION = "v2-fixed-2026-04-09"
+
+logger = logging.getLogger(__name__)
 
 ocr_reader = None
 whisper = None
@@ -29,123 +37,190 @@ def load_multimodal_models():
     global MODELS_LOADED, MODEL_LOAD_ERROR
     global ocr_reader, whisper, blip_processor, blip_model, clip_processor, clip_model
 
-    if MODELS_LOADED or MODEL_LOAD_ERROR is not None:
+    if MODELS_LOADED:
         return
+    if MODEL_LOAD_ERROR is not None:
+        raise RuntimeError(MODEL_LOAD_ERROR)
 
     try:
-        ocr_reader = easyocr.Reader(['en'], gpu=False)
-        whisper = pipeline(
-            "automatic-speech-recognition",
-            model="openai/whisper-base"
-        )
-        blip_processor = BlipProcessor.from_pretrained(
-            "Salesforce/blip-image-captioning-base"
-        )
-        blip_model = BlipForConditionalGeneration.from_pretrained(
-            "Salesforce/blip-image-captioning-base"
-        )
+        ocr_reader = easyocr.Reader(["en"], gpu=False)
+        whisper = pipeline("automatic-speech-recognition", model="openai/whisper-base")
+
+        blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+        blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
         blip_model.eval()
+
         clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         clip_model.eval()
+
         MODELS_LOADED = True
-    except Exception as exc:
+        logger.info("Multimodal detector models ready. detector_version=%s", DETECTOR_VERSION)
+    except Exception:
         MODEL_LOAD_ERROR = traceback.format_exc()
+        logger.exception("Failed to load multimodal detector models. detector_version=%s", DETECTOR_VERSION)
         raise
 
 
-# ── FROM SCRATCH: Hidden text detector ───────────────────────
+INJECTION_KEYWORDS = [
+    "new instruction",
+    "system prompt",
+    "you are now",
+    "act as",
+    "from now on",
+    "ignore previous instructions",
+    "ignore above instructions",
+    "do not follow previous instructions",
+    "print your instructions",
+    "what are your instructions",
+    "reveal your instructions",
+]
 
-def detect_low_contrast_text(image_path, threshold=30):
-    img = np.array(Image.open(image_path).convert('L'))
+
+def tokenize(text: str):
+    return re.findall(r"\b\w+\b", text.lower())
+
+
+def compute_tfidf_vector(text, vocab):
+    tokens = tokenize(text)
+    tf = Counter(tokens)
+    vector = np.array([tf.get(word, 0) for word in vocab], dtype=float)
+    norm = np.linalg.norm(vector)
+    if norm > 0:
+        vector /= norm
+    return vector
+
+
+def from_scratch_similarity(text1, text2):
+    tokens1 = set(tokenize(text1))
+    tokens2 = set(tokenize(text2))
+
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    intersection = tokens1 & tokens2
+    union = tokens1 | tokens2
+    jaccard = len(intersection) / (len(union) + 1e-8)
+
+    vocab = list(union)
+    vec1 = compute_tfidf_vector(text1, vocab)
+    vec2 = compute_tfidf_vector(text2, vocab)
+    cosine = float(np.dot(vec1, vec2))
+
+    similarity = (0.4 * jaccard) + (0.6 * cosine)
+    return round(float(similarity), 4)
+
+
+def detect_low_contrast_text(image_path, block_size=32):
+    """
+    Conservative heuristic:
+    low local variance alone is NOT hidden text.
+    We keep this as a weak signal only.
+    """
+    img = np.array(Image.open(image_path).convert("L"))
     h, w = img.shape
-    block_size = 32
 
-    suspicious_blocks = 0      # ghost text (low contrast)
-    high_contrast_blocks = 0   # embedded text (high contrast)
+    suspicious_blocks = 0
     total_blocks = 0
 
-    for i in range(0, h - block_size, block_size):
-        for j in range(0, w - block_size, block_size):
-            block = img[i:i+block_size, j:j+block_size]
-            std = np.std(block)
+    for i in range(0, max(h - block_size + 1, 1), block_size):
+        for j in range(0, max(w - block_size + 1, 1), block_size):
+            block = img[i:i + block_size, j:j + block_size]
+            if block.size == 0:
+                continue
+
+            std = float(np.std(block))
+            mean = float(np.mean(block))
             total_blocks += 1
 
-            if 2 < std < threshold:
-                suspicious_blocks += 1          # hidden/ghost text
-            elif std >= threshold and std < 80:
-                high_contrast_blocks += 1       # likely embedded readable text
+            # Very conservative band for faint overlays.
+            # Avoid flagging ordinary flat backgrounds or portraits.
+            if 4 <= std <= 18 and 25 <= mean <= 230:
+                suspicious_blocks += 1
 
     suspicion_ratio = suspicious_blocks / (total_blocks + 1e-8)
-    text_presence_ratio = high_contrast_blocks / (total_blocks + 1e-8)
-    hidden_risk = round(min(suspicion_ratio * 3, 1.0), 4)
+
+    # Weak signal only: low local contrast alone should never dominate.
+    hidden_risk = min(suspicion_ratio * 0.25, 0.12)
 
     return {
         "suspicious_block_ratio": round(suspicion_ratio, 4),
-        "text_presence_ratio": round(text_presence_ratio, 4),
-        "hidden_content_risk": hidden_risk,
-        "has_embedded_text": text_presence_ratio > 0.05,
-        "verdict": "SUSPICIOUS" if hidden_risk > 0.4 else (
-            "TEXT PRESENT" if text_presence_ratio > 0.05 else "CLEAN"
-        )
+        "hidden_content_risk": round(hidden_risk, 4),
+        "verdict": "SUSPICIOUS" if hidden_risk > 0.18 else "CLEAN"
     }
 
 
-def extract_text_ocr(image_path, min_confidence=0.4):
-    """
-    EasyOCR with confidence filtering.
-    Returns structured results including high and low confidence tokens.
-    """
+def extract_text_ocr(image_path, min_confidence=0.70):
     results = ocr_reader.readtext(image_path)
-    
-    high_conf = [(text, conf) for (_, text, conf) in results if conf >= min_confidence]
-    low_conf  = [(text, conf) for (_, text, conf) in results if conf < min_confidence]
 
-    extracted = " ".join([text for text, _ in high_conf])
+    high_conf = []
+    low_conf = []
+
+    for _, text, conf in results:
+        cleaned = text.strip()
+        if not cleaned:
+            continue
+
+        item = {
+            "text": cleaned,
+            "confidence": float(conf),
+            "length": len(cleaned)
+        }
+
+        if conf >= min_confidence:
+            high_conf.append(item)
+        else:
+            low_conf.append(item)
+
+    extracted = " ".join(x["text"] for x in high_conf)
+    avg_conf = sum(x["confidence"] for x in high_conf) / len(high_conf) if high_conf else 0.0
 
     return {
         "text": extracted.strip(),
         "high_confidence_tokens": high_conf,
         "low_confidence_tokens": low_conf,
-        "avg_confidence": round(
-            sum(c for _, c in high_conf) / (len(high_conf) + 1e-8), 3
-        ),
+        "avg_confidence": round(avg_conf, 3),
         "token_count": len(high_conf)
     }
 
 
-# ── FROM SCRATCH: Prompt injection keyword scanner ───────────
+def is_reliable_ocr(ocr_result: dict) -> bool:
+    token_count = int(ocr_result.get("token_count", 0))
+    avg_confidence = float(ocr_result.get("avg_confidence", 0.0))
+    text = (ocr_result.get("text") or "").strip()
+    compact_len = len(re.sub(r"\s+", "", text))
 
-INJECTION_KEYWORDS = [
-    "ignore", "forget", "new instruction", "system prompt",
-    "you are now", "disregard", "override", "jailbreak",
-    "act as", "pretend", "from now on", "ignore previous",
-    "ignore above", "do not follow", "bypass", "reveal",
-    "print your instructions", "what are your instructions"
-]
+    # Conservative gate: require enough readable content before trusting OCR-driven injection detection.
+    return token_count >= 4 and avg_confidence >= 0.80 and compact_len >= 12
 
-def scan_for_injection(text, fuzzy_threshold=80):
-    """
-    Enhanced scanner with fuzzy matching to catch OCR errors
-    and deliberate leetspeak/typo evasion.
-    """
-    text_lower = text.lower()
+
+def scan_for_injection(text, fuzzy_threshold=95):
+    text_lower = text.lower().strip()
+    if not text_lower:
+        return {
+            "exact_matches": [],
+            "fuzzy_matches": [],
+            "injection_keywords_found": [],
+            "injection_risk": 0.0,
+            "verdict": "CLEAN"
+        }
+
     words = text_lower.split()
     found_exact = []
     found_fuzzy = []
 
     for keyword in INJECTION_KEYWORDS:
-        # Exact match
-        if keyword in text_lower:
+        exact_pattern = r"\\b" + re.escape(keyword) + r"\\b"
+        if re.search(exact_pattern, text_lower):
             found_exact.append(keyword)
             continue
 
-        # Fuzzy match against sliding word windows
         kw_words = keyword.split()
         window_size = len(kw_words)
+
         for i in range(len(words) - window_size + 1):
             window = " ".join(words[i:i + window_size])
-            score = fuzz.ratio(keyword, window)
+            score = fuzz.partial_ratio(keyword, window)
             if score >= fuzzy_threshold:
                 found_fuzzy.append({
                     "keyword": keyword,
@@ -155,183 +230,145 @@ def scan_for_injection(text, fuzzy_threshold=80):
                 break
 
     all_found = found_exact + [f["keyword"] for f in found_fuzzy]
-    risk = 0.0
-    if len(all_found) >= 3:
-        risk = 1.0
-    elif len(all_found) == 2:
-        risk = 0.85
-    elif len(all_found) == 1:
-        risk = 0.65
+
+    unique_found = sorted(set(all_found))
+
+    # More conservative scoring: one weak keyword should not trigger high risk.
+    if len(unique_found) >= 5:
+        risk = 0.90
+    elif len(unique_found) == 4:
+        risk = 0.72
+    elif len(unique_found) == 3:
+        risk = 0.45
+    elif len(unique_found) == 2:
+        risk = 0.22
+    elif len(unique_found) == 1:
+        risk = 0.08
+    else:
+        risk = 0.0
 
     return {
         "exact_matches": found_exact,
         "fuzzy_matches": found_fuzzy,
-        "injection_keywords_found": all_found,
+        "injection_keywords_found": unique_found,
         "injection_risk": round(risk, 4),
-        "verdict": "INJECTION DETECTED" if risk > 0.5 else "CLEAN"
+        "verdict": "INJECTION DETECTED" if risk >= 0.6 else "CLEAN"
     }
 
 
-def compute_overall_risk(risk_scores_dict):
+def transcribe_audio(audio_path):
+    audio, _ = librosa.load(audio_path, sr=16000, mono=True)
+    result = whisper(audio.astype(np.float32))
+    return result["text"].strip()
+
+
+def caption_image(image_path):
+    image = Image.open(image_path).convert("RGB")
+    inputs = blip_processor(image, return_tensors="pt")
+    with torch.no_grad():
+        output = blip_model.generate(**inputs, max_length=40)
+    return blip_processor.decode(output[0], skip_special_tokens=True).strip()
+
+
+def get_clip_alignment(image_path, text):
+    clean_text = re.sub(r"[\W_]+", "", text)
+    if len(clean_text) < 12:
+        return None, "SKIPPED — transcript too short/noisy"
+
+    image = Image.open(image_path).convert("RGB")
+    inputs = clip_processor(text=[text], images=image, return_tensors="pt", padding=True)
+
+    with torch.no_grad():
+        outputs = clip_model(**inputs)
+        score = torch.sigmoid(outputs.logits_per_image).item()
+
+    return round(float(score), 4), "OK"
+
+
+def score_mismatch_risk(similarity, image_caption="", transcript=""):
     """
-    Computes overall risk with weighted signal breakdown for auditability.
+    This is now conservative, because transcript-vs-caption mismatch
+    is a weak signal for normal speech photos.
     """
+    caption_lower = image_caption.lower()
+    transcript_len = len(tokenize(transcript))
+
+    generic_speaking_scene = any(
+        phrase in caption_lower
+        for phrase in [
+            "a person speaking",
+            "a woman speaking",
+            "a man speaking",
+            "speaking at a podium",
+            "standing at a podium",
+            "at a microphone",
+            "giving a speech",
+            "person giving a speech",
+            "person speaking to a crowd",
+            "woman giving a speech",
+            "man giving a speech",
+        ]
+    )
+
+    # If the image is just a generic speaking scene and transcript is long,
+    # lexical overlap is expected to be weak. Treat as uncertain, not risky.
+    if generic_speaking_scene and transcript_len >= 8:
+        return 0.08, "LOW", "Generic speaking scene — transcript/caption mismatch unreliable"
+
+    if similarity > 0.50:
+        return 0.05, "LOW", "Modalities consistent"
+    if similarity > 0.30:
+        return 0.15, "LOW", "Weak mismatch"
+    if similarity > 0.15:
+        return 0.25, "MEDIUM", "Moderate mismatch"
+    return 0.38, "MEDIUM", "Possible mismatch, low confidence"
+
+
+def compute_overall_risk(signal_scores):
     weights = {
-        "hidden_text":    0.15,
-        "ocr_injection":  0.35,   # highest weight — most reliable signal
-        "mismatch":       0.30,
-        "clip":           0.20
+        "hidden_text": 0.07,
+        "ocr_injection": 0.50,
+        "mismatch": 0.17,
+        "clip": 0.06,
+        "audio_injection": 0.32,
     }
 
     weighted_sum = 0.0
     total_weight = 0.0
     breakdown = {}
 
-    for signal, score in risk_scores_dict.items():
-        w = weights.get(signal, 0.1)
-        contribution = round(score * w, 4)
+    for signal, score in signal_scores.items():
+        w = weights.get(signal, 0.10)
+        contribution = score * w
         breakdown[signal] = {
-            "raw_score": score,
+            "raw_score": round(score, 4),
             "weight": w,
-            "contribution": contribution
+            "contribution": round(contribution, 4),
         }
         weighted_sum += contribution
         total_weight += w
 
-    overall = round(weighted_sum / total_weight, 4)
+    overall = weighted_sum / total_weight if total_weight > 0 else 0.0
 
     return {
-        "overall_risk_score": overall,
+        "overall_risk_score": round(overall, 4),
         "signal_breakdown": breakdown
     }
 
 
-# ── FROM SCRATCH: Semantic similarity (TF-IDF + Jaccard) ─────
-
-def tokenize(text):
-    """Simple tokenizer"""
-    import re
-    return re.findall(r'\b\w+\b', text.lower())
-
-def compute_tfidf_vector(text, vocab):
-    """Compute TF vector for a text given a vocabulary"""
-    tokens = tokenize(text)
-    tf = Counter(tokens)
-    vector = np.array([tf.get(word, 0) for word in vocab], dtype=float)
-    norm = np.linalg.norm(vector)
-    if norm > 0:
-        vector /= norm
-    return vector
-
-def from_scratch_similarity(text1, text2):
-    """
-    From-scratch text similarity using TF cosine similarity + Jaccard.
-    Returns similarity score between 0 and 1.
-    """
-    tokens1 = set(tokenize(text1))
-    tokens2 = set(tokenize(text2))
-
-    # Jaccard similarity
-    intersection = tokens1 & tokens2
-    union = tokens1 | tokens2
-    jaccard = len(intersection) / (len(union) + 1e-8)
-
-    # TF cosine similarity
-    vocab = list(union)
-    if vocab:
-        vec1 = compute_tfidf_vector(text1, vocab)
-        vec2 = compute_tfidf_vector(text2, vocab)
-        cosine = float(np.dot(vec1, vec2))
-    else:
-        cosine = 0.0
-
-    # Combined similarity
-    similarity = (jaccard * 0.4) + (cosine * 0.6)
-    return round(similarity, 4)
-
-
-# ── FROM SCRATCH: Mismatch risk scorer ───────────────────────
-
-def score_mismatch_risk(similarity):
-    """
-    From-scratch mismatch risk scoring based on similarity.
-    Low similarity between modalities = high injection risk.
-    """
-    if similarity > 0.5:
-        return 0.05, "LOW", "Modalities consistent"
-    elif similarity > 0.3:
-        return 0.45, "MEDIUM", "Moderate mismatch — review recommended"
-    elif similarity > 0.15:
-        return 0.75, "HIGH", "Significant mismatch — likely manipulation"
-    else:
-        return 0.95, "CRITICAL", "Severe mismatch — injection attack likely"
-
-
-# ── SENSORS: Pretrained models used only for extraction ──────
-
-def transcribe_audio(audio_path):
-    """Whisper used as sensor — extracts text from audio"""
-    audio, sr = librosa.load(audio_path, sr=16000, mono=True)
-    result = whisper(audio.astype(np.float32))
-    return result["text"].strip()
-
-
-def caption_image(image_path):
-    """BLIP used as sensor — extracts text description from image"""
-    image = Image.open(image_path).convert("RGB")
-    inputs = blip_processor(image, return_tensors="pt")
-    with torch.no_grad():
-        output = blip_model.generate(**inputs, max_length=60)
-    return blip_processor.decode(output[0], skip_special_tokens=True)
-
-
-def get_clip_alignment(image_path, text):
-    """CLIP alignment with degenerate input guard"""
-    
-    # Guard: if transcript is effectively empty/noise, skip CLIP
-    clean_text = text.replace(".", "").replace(" ", "").strip()
-    if len(clean_text) < 5:
-        return None, "SKIPPED — transcript too short/noisy for reliable CLIP scoring"
-
-    image = Image.open(image_path).convert("RGB")
-    inputs = clip_processor(
-        text=[text],
-        images=image,
-        return_tensors="pt",
-        padding=True
-    )
-    with torch.no_grad():
-        outputs = clip_model(**inputs)
-        score = torch.sigmoid(outputs.logits_per_image).item()
-    return round(score, 4), "OK"
-
-
-# ── MAIN: Full multimodal analysis ───────────────────────────
-
 def analyze_multimodal(audio_path=None, image_path=None):
-    """
-    Full multimodal prompt injection detection.
-    Core detection logic is from scratch.
-    Pretrained models used only as feature/text extractors.
-    
-    Args:
-        audio_path: path to audio file (optional)
-        image_path: path to image file (optional)
-    
-    Returns:
-        dict with full analysis results
-    """
     load_multimodal_models()
-    if MODEL_LOAD_ERROR is not None:
-        raise RuntimeError(
-            "Multimodal model initialization failed. Check model cache, disk space, and network access."
-        )
 
     results = {
+        "detector_version": DETECTOR_VERSION,
         "hidden_text_analysis": None,
+        "ocr_analysis": None,
         "injection_scan": None,
         "audio_visual_mismatch": None,
         "clip_alignment": None,
+        "image_caption": None,
+        "audio_transcript": None,
+        "semantic_similarity": None,
         "overall_risk_score": 0.0,
         "overall_verdict": "SAFE",
         "risk_tier": "LOW",
@@ -341,151 +378,164 @@ def analyze_multimodal(audio_path=None, image_path=None):
     }
 
     signal_scores = {}
+    image_caption = None
 
-    # ── Image analysis ────────────────────────────────────────
     if image_path:
-        # 1. From-scratch hidden text detection
         hidden = detect_low_contrast_text(image_path)
         results["hidden_text_analysis"] = hidden
-        signal_scores["hidden_text"] = hidden["hidden_content_risk"]
 
-        if hidden["hidden_content_risk"] > 0.4:
-            results["flags"].append(
-                f"Hidden content detected in image "
-                f"(suspicion ratio: {hidden['suspicious_block_ratio']:.1%})"
-            )
+        ocr_result = extract_text_ocr(image_path, min_confidence=0.75)
+        results["ocr_analysis"] = ocr_result
 
-        # 2. BLIP for scene understanding (caption)
         image_caption = caption_image(image_path)
         results["image_caption"] = image_caption
 
-        # 3. OCR for actual text extraction
-        ocr_result = extract_text_ocr(image_path)
-        ocr_text = ocr_result["text"]
-        results["ocr_analysis"] = ocr_result
+        # Hidden text only matters meaningfully if OCR also found readable text
+        if is_reliable_ocr(ocr_result):
+            hidden_risk = min(hidden["hidden_content_risk"] + 0.10, 0.28)
+        else:
+            hidden_risk = min(hidden["hidden_content_risk"], 0.06)
 
-        # 4. Scan BOTH caption and OCR text for injection keywords
-        injection_caption = scan_for_injection(image_caption)
-        injection_ocr = scan_for_injection(ocr_text)
+        signal_scores["hidden_text"] = hidden_risk
 
-        # Merge findings — take highest risk
-        combined_keywords = list(set(
-            injection_caption["injection_keywords_found"] +
-            injection_ocr["injection_keywords_found"]
-        ))
-        combined_risk = max(
-            injection_caption["injection_risk"],
-            injection_ocr["injection_risk"]
-        )
-
-        results["injection_scan"] = {
-            "caption_scan": injection_caption,
-            "ocr_scan": injection_ocr,
-            "combined_keywords": combined_keywords,
-            "injection_risk": round(combined_risk, 4),
-            "verdict": "INJECTION DETECTED" if combined_risk > 0.5 else "CLEAN",
-            "source": "ocr" if injection_ocr["injection_risk"] > injection_caption["injection_risk"] else "caption"
-        }
-        signal_scores["ocr_injection"] = combined_risk
-
-        if combined_keywords:
+        if hidden_risk >= 0.18:
             results["flags"].append(
-                f"Prompt injection keywords found: {combined_keywords}"
+                f"Possible hidden/embedded text in image (weak signal, ratio: {hidden['suspicious_block_ratio']:.1%})"
             )
 
-    # ── Audio + Image cross-modal analysis ───────────────────
-    if audio_path and image_path:
-        # 4. Transcribe audio (Whisper as sensor)
-        audio_transcript = transcribe_audio(audio_path)
-        results["audio_transcript"] = audio_transcript
+        # Important fix:
+        # Only OCR text is scanned for injection. Caption is not.
+        ocr_is_reliable = is_reliable_ocr(ocr_result)
 
-        # 5. From-scratch semantic similarity
-        similarity = from_scratch_similarity(audio_transcript, image_caption)
+        if ocr_is_reliable:
+            ocr_injection = scan_for_injection(ocr_result["text"])
+        else:
+            ocr_injection = {
+                "exact_matches": [],
+                "fuzzy_matches": [],
+                "injection_keywords_found": [],
+                "injection_risk": 0.0,
+                "verdict": "CLEAN",
+                "note": "OCR confidence too low to trust for injection detection"
+            }
+
+        results["injection_scan"] = ocr_injection
+        signal_scores["ocr_injection"] = ocr_injection["injection_risk"]
+
+        if ocr_injection["injection_keywords_found"]:
+            results["flags"].append(
+                f"Prompt-injection keywords in OCR text: {ocr_injection['injection_keywords_found']}"
+            )
+
+    if audio_path and not image_path:
+        transcript = transcribe_audio(audio_path)
+        results["audio_transcript"] = transcript
+
+        audio_injection = scan_for_injection(transcript)
+        results["injection_scan"] = audio_injection
+        signal_scores["audio_injection"] = audio_injection["injection_risk"]
+
+        if audio_injection["injection_keywords_found"]:
+            results["flags"].append(
+                f"Prompt-injection keywords in audio transcript: {audio_injection['injection_keywords_found']}"
+            )
+
+    if audio_path and image_path:
+        transcript = transcribe_audio(audio_path)
+        results["audio_transcript"] = transcript
+
+        similarity = from_scratch_similarity(transcript, image_caption or "")
         results["semantic_similarity"] = similarity
 
-        # 6. From-scratch mismatch risk scoring
-        mismatch_risk, risk_level, mismatch_note = score_mismatch_risk(similarity)
-        signal_scores["mismatch"] = mismatch_risk
+        mismatch_risk, risk_level, mismatch_note = score_mismatch_risk(
+            similarity,
+            image_caption=image_caption or "",
+            transcript=transcript,
+        )
 
         results["audio_visual_mismatch"] = {
-            "audio_transcript": audio_transcript,
+            "audio_transcript": transcript,
             "image_caption": image_caption,
             "similarity_score": similarity,
             "mismatch_risk": round(mismatch_risk, 4),
             "risk_level": risk_level,
             "note": mismatch_note
         }
+        signal_scores["mismatch"] = mismatch_risk
 
-        if mismatch_risk > 0.7:
+        if mismatch_risk >= 0.35:
             results["flags"].append(
-                f"Audio-visual MISMATCH: similarity only {similarity:.1%} — "
-                f"{mismatch_note}"
+                f"Audio-visual mismatch: similarity {similarity:.1%} — {mismatch_note}"
             )
 
-        # 7. CLIP alignment check (CLIP as sensor)
-        clip_score, clip_status = get_clip_alignment(image_path, audio_transcript)
-
+        clip_score, clip_status = get_clip_alignment(image_path, transcript)
         if clip_score is not None:
+            clip_risk = max(0.0, min(1.0 - clip_score, 1.0))
+            clip_risk *= 0.35
             results["clip_alignment"] = {
                 "score": clip_score,
                 "status": clip_status,
-                "note": "High score = audio and image are consistent"
+                "note": "Support signal only"
             }
-            # Low CLIP alignment also contributes to risk
-            clip_risk = round(1.0 - clip_score, 4)
             signal_scores["clip"] = clip_risk
         else:
             results["clip_alignment"] = {
                 "score": None,
                 "status": clip_status,
-                "note": "CLIP skipped — unreliable for this input"
+                "note": "Skipped"
             }
-            # Still penalize: degenerate transcript = likely noise injection
-            signal_scores["clip"] = 0.5
-            results["flags"].append("Audio transcript was empty/noise — CLIP skipped, risk penalized")
 
-    # ── Audio only analysis ───────────────────────────────────
-    if audio_path and not image_path:
-        audio_transcript = transcribe_audio(audio_path)
-        results["audio_transcript"] = audio_transcript
-
-        # Scan transcript for injection keywords
-        injection = scan_for_injection(audio_transcript)
-        results["injection_scan"] = injection
-        signal_scores["ocr_injection"] = injection["injection_risk"] # Reuse key for audio transcript scan
-
-        if injection["injection_keywords_found"]:
-            results["flags"].append(
-                f"Prompt injection keywords found in audio: "
-                f"{injection['injection_keywords_found']}"
-            )
-
-    # ── Overall risk computation (Breakdown) ──────────────────
     if signal_scores:
-        explanation = compute_overall_risk(signal_scores)
-        results["overall_risk_score"] = explanation["overall_risk_score"]
-        results["signal_breakdown"] = explanation["signal_breakdown"]
+        overall = compute_overall_risk(signal_scores)
+        results["overall_risk_score"] = overall["overall_risk_score"]
+        results["signal_breakdown"] = overall["signal_breakdown"]
 
     score = results["overall_risk_score"]
-    if score > 0.85:
-        results["overall_verdict"] = "CRITICAL — injection attack detected"
-        results["risk_tier"] = "CRITICAL"
-    elif score > 0.6:
-        results["overall_verdict"] = "HIGH RISK — likely manipulation"
-        results["risk_tier"] = "HIGH"
-    elif score > 0.35:
+
+    ocr_signal = float(signal_scores.get("ocr_injection", 0.0))
+    hidden_signal = float(signal_scores.get("hidden_text", 0.0))
+    strong_evidence = (
+        ocr_signal >= 0.72
+        or (ocr_signal >= 0.45 and hidden_signal >= 0.18)
+    )
+
+    if score >= 0.80:
+        if strong_evidence:
+            results["overall_verdict"] = "CRITICAL — injection attack detected"
+            results["risk_tier"] = "CRITICAL"
+        else:
+            results["overall_verdict"] = "SUSPICIOUS — review required"
+            results["risk_tier"] = "MEDIUM"
+            results["flags"].append("Risk gated: no strong reliable evidence for CRITICAL verdict")
+    elif score >= 0.68:
+        if strong_evidence:
+            results["overall_verdict"] = "HIGH RISK — likely manipulation"
+            results["risk_tier"] = "HIGH"
+        else:
+            results["overall_verdict"] = "SUSPICIOUS — review required"
+            results["risk_tier"] = "MEDIUM"
+            results["flags"].append("Risk gated: no strong reliable evidence for HIGH verdict")
+    elif score >= 0.40:
         results["overall_verdict"] = "SUSPICIOUS — review required"
         results["risk_tier"] = "MEDIUM"
     else:
         results["overall_verdict"] = "SAFE"
         results["risk_tier"] = "LOW"
 
+    modality = "audio + image" if audio_path and image_path else "audio" if audio_path else "image"
+
     results["explanation"] = (
-        f"Analyzed {('audio + image' if audio_path and image_path else 'audio' if audio_path else 'image')}. "
-        f"Overall risk: {score:.1%} ({results['risk_tier']}). "
+        f"Analyzed {modality}. "
+        f"Overall risk: {results['overall_risk_score']:.1%} ({results['risk_tier']}). "
         f"Flags: {len(results['flags'])}. "
         f"{'; '.join(results['flags']) if results['flags'] else 'No suspicious activity detected.'}"
     )
+
+    logger.info("detector_version=%s ocr_text=%s", DETECTOR_VERSION, (results.get("ocr_analysis") or {}).get("text"))
+    logger.info("detector_version=%s ocr_avg_confidence=%s", DETECTOR_VERSION, (results.get("ocr_analysis") or {}).get("avg_confidence"))
+    logger.info("detector_version=%s image_caption=%s", DETECTOR_VERSION, results.get("image_caption"))
+    logger.info("detector_version=%s audio_transcript=%s", DETECTOR_VERSION, results.get("audio_transcript"))
+    logger.info("detector_version=%s signal_breakdown=%s", DETECTOR_VERSION, results.get("signal_breakdown"))
 
     return results
 
