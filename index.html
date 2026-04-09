@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Multimodal Analyser | Understand anything, instantly.</title>
+    <title>Guardian AI | Understand anything, instantly.</title>
     <meta name="description" content="Upload audio, image, or mixed media and get instant AI-powered analysis." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -30,7 +30,7 @@
         ];
 
         const FEATURES = [
-            { color: "#14B8A6", title: "Whisper-grade Transcription", desc: "State-of-art speech recognition across 40+ languages with 99%+ word accuracy." },
+            { color: "#14B8A6", title: "Whisper-grade Transcription", desc: "State-of-art speech recognition with high word accuracy." },
             { color: "#0F766E", title: "Frame-level Vision",          desc: "Scene segmentation, object detection, and action labelling on every keyframe." },
             { color: "#2DD4BF", title: "Cross-Modal Fusion",          desc: "Align speech, faces, and on-screen text into a unified, coherent narrative." },
             { color: "#14B8A6", title: "Emotion & Sentiment",         desc: "Detect valence, arousal and discrete emotions from voice and facial expressions." },
@@ -91,16 +91,13 @@
                             <div className="logo-icon">
                                 <MicIcon size={16} />
                             </div>
-                            <span style={{ fontWeight: 700, fontSize: "1.15rem", letterSpacing: "-0.02em" }}>Multimodal</span>
+                            <span style={{ fontWeight: 700, fontSize: "1.15rem", letterSpacing: "-0.02em" }}>Guardian AI</span>
                         </div>
 
                         <div className="nav-links">
                             <a href="#analyser" className="nav-link">Analyser</a>
                             <a href="#features"  className="nav-link">Features</a>
-                            <a href="#"          className="nav-link">Docs</a>
                         </div>
-
-                        <a href="#analyser" className="btn-primary-sm">Try it free →</a>
                     </nav>
                 </header>
             );
@@ -135,24 +132,24 @@
                             </a>
                             <a href="#features" className="btn-secondary-lg">See features</a>
                         </div>
+
+                        <div className="stat-row">
+                            {[
+                                ["99.2%", "Transcription accuracy"],
+                                ["< 3s",  "Average processing time"],
+                                ["12",    "File formats"],
+                            ].map(([num, label], i, arr) => (
+                                <React.Fragment key={label}>
+                                    <div className="stat-card">
+                                        <span className="stat-num">{num}</span>
+                                        <span className="stat-label">{label}</span>
+                                    </div>
+                                    {i < arr.length - 1 && <div className="stat-divider" />}
+                                </React.Fragment>
+                            ))}
+                        </div>
                     </div>
 
-                    <div className="stat-row">
-                        {[
-                            ["99.2%", "Transcription accuracy"],
-                            ["< 3s",  "Average processing time"],
-                            ["40+",   "Supported languages"],
-                            ["12",    "File formats"],
-                        ].map(([num, label], i, arr) => (
-                            <React.Fragment key={label}>
-                                <div className="stat-card">
-                                    <span className="stat-num">{num}</span>
-                                    <span className="stat-label">{label}</span>
-                                </div>
-                                {i < arr.length - 1 && <div className="stat-divider" />}
-                            </React.Fragment>
-                        ))}
-                    </div>
                 </section>
             );
         }
@@ -266,7 +263,7 @@
                 tag: "Audio Analyser",
                 title: <>Transcribe &amp;<br />Analyse Speech</>,
                 desc: "Upload any audio file and get accurate transcription, speaker diarisation, sentiment analysis, and language detection.",
-                features: ["Automatic transcription", "Speaker detection", "Sentiment & emotion", "40+ language support"],
+                features: ["Automatic transcription", "Speaker detection", "Sentiment & emotion", "Language support"],
             },
             video: {
                 tagCls: "",
@@ -571,27 +568,6 @@
             );
         }
 
-        // ─── Footer Ticker ───────────────────────────────────────────────────────────
-        const TICKER_ITEMS = [
-            "MP3 · WAV · OGG · M4A · FLAC", "JPG · JPEG · PNG · WebP · BMP",
-            "Speaker Diarisation", "Emotion Detection", "Scene Understanding",
-            "Cross-Modal Fusion", "Whisper ASR", "Sentiment Analysis", "OCR on Frames", "40+ Languages",
-        ];
-
-        function Ticker() {
-            return (
-                <footer className="ticker-footer">
-                    <div className="ticker-track">
-                        {[0, 1].map(i => (
-                            <div className="ticker-group" key={i} aria-hidden={i === 1}>
-                                {TICKER_ITEMS.map(item => <span key={item}>{item}</span>)}
-                            </div>
-                        ))}
-                    </div>
-                </footer>
-            );
-        }
-
         // ─── App ─────────────────────────────────────────────────────────────────────
         function App() {
             return (
@@ -601,12 +577,11 @@
                     <div className="fixed inset-0 pointer-events-none" style={{ zIndex: -1, background: "radial-gradient(circle at 70% 30%, rgba(20,184,166,0.07) 0%, transparent 55%), radial-gradient(circle at 20% 80%, rgba(15,118,110,0.05) 0%, transparent 50%)" }} />
 
                     <Navbar />
-                    <main style={{ paddingBottom: "48px" }}>
+                    <main>
                         <Hero />
                         <AnalyserSection />
                         <FeaturesSection />
                     </main>
-                    <Ticker />
                 </>
             );
         }
