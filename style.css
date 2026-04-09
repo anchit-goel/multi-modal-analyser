@@ -645,42 +645,6 @@ input[type="file"].sr-only { position: absolute; width: 1px; height: 1px; paddin
     line-height: 1.6;
 }
 
-/* ─── Footer Ticker ────────────────────────────────────────────────────────── */
-.ticker-footer {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    height: 48px;
-    background: rgba(0,0,0,.85);
-    border-top: 1px solid rgba(255,255,255,.07);
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    z-index: 50;
-}
-
-.ticker-track {
-    display: flex;
-    width: max-content;
-    animation: ticker 40s linear infinite;
-}
-.ticker-track:hover { animation-play-state: paused; }
-
-.ticker-group {
-    display: flex;
-    align-items: center;
-    gap: 2.5rem;
-    padding: 0 2.5rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: .78rem;
-    color: rgba(255,255,255,.2);
-    white-space: nowrap;
-}
-
-@keyframes ticker {
-    from { transform: translateX(0); }
-    to   { transform: translateX(-50%); }
-}
-
 /* ─── Transitions ──────────────────────────────────────────────────────────── */
 [x-cloak] { display: none !important; }
 
